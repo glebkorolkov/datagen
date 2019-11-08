@@ -462,6 +462,44 @@ def make_timestamp(last="1 year"):
     return datetime.datetime.fromtimestamp(random_ts)
 
 
+def make_timestamp_string(last="1 year", date_format="yyyy-MM-dd HH:mm:ss"):
+    py_format = sdf2py(date_format)
+    return datetime.datetime.strftime(make_timestamp(last), py_format)
+
+
+def sdf2py(sd_format):
+    """Function that transforms Java's SimpleDateFormat string into
+    python time format string. Not all time components are supported."""
+
+    # Return early if looks like python time format
+    if "%" in sd_format:
+        return sd_format
+    # Do replacements if dealing with SimpleDateFormat
+    mapping = (
+        ("yyyy", "%Y"),  # 2019
+        ("yy", "%y"),    # 19
+        ("MMMM", "%B"),  # November
+        ("MMM", "%b"),   # Nov
+        ("MM", "%m"),    # 11
+        ("dd", "%d"),    # 07
+        ("HH", "%H"),    # 16
+        ("KK", "%I"),    # 04
+        ("a", "%p"),     # PM
+        ("mm", "%M"),    # 40
+        ("SSS", "%f"),   # .256
+        ("ss", "%S"),    # 12
+        ("Z", "%1"),     # -0400
+        ("z", "%Z"),     # EDT
+        ("%1", "%z"),    # little hack to deal with multiple replacements
+        ("EEEE", "%A"),  # Thursday
+        ("EEE", "%a"),   # Thu
+    )
+    out = sd_format
+    for pair in mapping:
+        out = out.replace(pair[0], pair[1])
+    return out
+
+
 def make_random_dict(dictionary, add_nested=False):
     """Function that generates a random dictionary with fixed structure.
 
@@ -493,20 +531,30 @@ def make_random_dict(dictionary, add_nested=False):
     return random_dict
 
 
-def make_json(dictionary):
+def make_json(dictionary, null_prob=0.1, schema=None):
     """Function that generates a random json string.
 
     Parameters
     ----------
     dictionary : list or tuple
         List of words used to build phrases inside jsonified dictionary
+    null_prob : float
+        Frequency of null values within generated json fields
+    schema : pyspark.sql.types.StructType
+        Schema for json data structure
 
     Returns
     -------
     str
         Json-encoded string
     """
-    return json.dumps(make_random_dict(dictionary, add_nested=True))
+
+    data_dict = {}
+    if schema:
+        data_dict = make_struct(schema, dictionary, null_prob)
+    else:
+        data_dict = make_random_dict(dictionary, add_nested=True)
+    return json.dumps(data_dict)
 
 
 def make_array(dictionary,
@@ -660,13 +708,16 @@ def generate_val(data_type, dictionary, nullable=False, null_prob=0.1, metadata=
             "char": {"func": make_char, "params": ("case",)},
             "categorical": {"func": make_cat_string, "params": ("categories",)},
             "collector_number": {"func": make_collector_number, "params": tuple()},
-            "json": {"func": make_json, "params": tuple()}
+            "json": {"func": make_json, "params": ("schema",)},
+            "timestamp": {"func": make_timestamp_string, "params": ("last", "date_format",)}
         }
         func = string_func_mapping[content_type]["func"]
         params = set_params(metadata, string_func_mapping[content_type]["params"])
         # Pass dictionary as param to certain content types
         if content_type in ("phrase", "text", "json"):
             params["dictionary"] = dictionary
+        if content_type in ("json",):
+            params["null_prob"] = null_prob
     elif data_type.typeName() == "decimal":
         if getattr(data_type, "scale", None) is not None:
             params["scale"] = getattr(data_type, "scale")

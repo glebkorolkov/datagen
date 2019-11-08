@@ -185,10 +185,31 @@ metadata property that will impact the value produced. If the field has nullable
     ```
 
 ###### `json`
-  * A random json string. Represents a dictionary with fixed keys and random values.
+  * A random json string. Can use provided schema or default schema.
+  * Metadata params:
+  - `schema`: schema for json-encoded data structure
+  Default: `None` (default schema)
   * Example:
     ```python
-    StructField("some_field", StringType(), True, metadata={"content_type": "json"})
+    json_schema = StructType([
+        StructField("id", IntegerType(), False),
+        StructField("name", StringType(), True, metadata={"length": 2})
+    ])
+    StructField(
+        name="some_field", dataType=StringType(), nullable=True,
+        metadata={"content_type": "json", "schema": json_schema})
+    ```
+
+###### `timestamp`
+  * Date converted to a string.
+  * Metadata params:
+  - `last`: interval for generated dates from current timestamp backwards.
+  Default: `"1 year"`
+  - `date_format`: date format string (in SimpleDateFormat).
+  Default: `"yyyy-MM-dd HH:mm:ss"`.
+  * Example:
+    ```python
+    StructField("some_field", StringType(), True, metadata={"content_type": "timestamp", "date_format": "MMM dd, yyyy"})
     ```
 
 ### ArrayType()

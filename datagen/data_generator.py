@@ -1,9 +1,10 @@
 import os
 
-from .generator_utils import generate_batch
-from .fs_utils import generate_file_names, get_fs_helper
+from pyspark.sql.types import StructType, ArrayType, StructField
 
 from .dictionary import english_words as DEFAULT_DICTIONARY
+from .generator_utils import generate_batch
+from .fs_utils import generate_file_names, get_fs_helper
 
 
 class DataGenerator:
@@ -47,7 +48,9 @@ class DataGenerator:
             batch_size=num_records,
             dictionary=self.dictionary,
             null_prob=self.null_prob)
-        return self.spark.createDataFrame(data, schema)
+        # Remove metadata from schema as params may not be json-serializable
+        output_schema = clean_schema(schema)
+        return self.spark.createDataFrame(data, output_schema)
 
     @property
     def generate(self):
@@ -226,3 +229,19 @@ class DataWriter:
             from_path = os.path.join(tmp_dir, csv_file_name)
             fs_helper.mv(from_path, to_path)
             fs_helper.rmdir(os.path.join(location, "tmp"))
+
+
+def clean_schema(schema):
+    """Method that recursively removes metadata from schema fields and returns
+    new schema without modifying the original one."""
+
+    new_schema = StructType([])
+    for field in schema.fields:
+        new_dtype = field.dataType
+        if new_dtype.typeName() == 'struct':
+            new_dtype = clean_schema(new_dtype)
+        elif new_dtype.typeName() == 'array' and new_dtype.elementType.typeName() == 'struct':
+            new_dtype = ArrayType(clean_schema(new_dtype.elementType), new_dtype.containsNull)
+        new_field = StructField(field.name, new_dtype, field.nullable, {})
+        new_schema.add(new_field)
+    return new_schema
