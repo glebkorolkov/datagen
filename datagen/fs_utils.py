@@ -210,9 +210,9 @@ def generate_file_name(pattern, ts):
         File name
     """
 
-    date_pattern = re.findall(r".*(\[[yMdmHs\-:_ ]+\]).*", pattern)
+    date_pattern = re.findall(r".*(\[[yMdmHs\-:_ ]*\]).*", pattern)
     if len(date_pattern) < 1:
-        raise ValueError("Invalid file pattern: {}".format(pattern))
+        return pattern
     date_str = date_pattern[0]
     date_str = date_str\
         .replace("[", "").replace("]", "")\
