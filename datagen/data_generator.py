@@ -1,6 +1,7 @@
 import os
 
 from pyspark.sql.types import StructType, ArrayType, StructField
+from pyspark.sql import functions as f
 
 from .dictionary import english_words as DEFAULT_DICTIONARY
 from .generator_utils import generate_batch
@@ -16,6 +17,13 @@ class DataGenerator:
     ----------
     spark : spark instance
         Instance of Apache spark session
+    dictionary : list[str]
+        List of words to generate phrases from. Default: None.
+        If None default dictionary of 5,000 most common English
+        words is used.
+    null_prob : float
+        Global null probability for nullable fields within (0, 1)
+        range. Default: 0.1
 
     Methods
     -------
@@ -23,9 +31,9 @@ class DataGenerator:
     generate - return DataWriter object to generate data and write to files
     """
 
-    def __init__(self, spark, dictionary=DEFAULT_DICTIONARY, null_prob=0.1):
+    def __init__(self, spark, dictionary=None, null_prob=0.1):
         self.spark = spark
-        self.dictionary = dictionary
+        self.dictionary = dictionary or DEFAULT_DICTIONARY
         self.null_prob = null_prob
 
     def generate_df(self, schema, num_records=10000):
@@ -50,7 +58,9 @@ class DataGenerator:
             null_prob=self.null_prob)
         # Remove metadata from schema as params may not be json-serializable
         output_schema = clean_schema(schema)
-        return self.spark.createDataFrame(data, output_schema)
+        df = self.spark.createDataFrame(data, output_schema)
+        df = nullify_cols(df, schema)
+        return df
 
     @property
     def generate(self):
@@ -232,7 +242,7 @@ class DataWriter:
 
 
 def clean_schema(schema):
-    """Method that recursively removes metadata from schema fields and returns
+    """Function that recursively removes metadata from schema fields and returns
     new schema without modifying the original one."""
 
     new_schema = StructType([])
@@ -245,3 +255,19 @@ def clean_schema(schema):
         new_field = StructField(field.name, new_dtype, field.nullable, {})
         new_schema.add(new_field)
     return new_schema
+
+
+def nullify_cols(df, schema):
+    """Function that nullifies values in related columns.
+
+    If col A depends on B for nullification its values will
+    be set to null whenever B is null.
+    """
+
+    for field in schema:
+        null_prob = field.metadata.get("null_prob")
+        model_col = null_prob if isinstance(null_prob, str) else None
+        if model_col and model_col in df.columns:
+            val_expr = f.when(f.col(model_col).isNull(), f.lit(None)).otherwise(f.col(field.name))
+            df = df.withColumn(field.name, val_expr)
+    return df

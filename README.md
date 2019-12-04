@@ -63,7 +63,7 @@ os.listdir("/path/to/data/dir/")
 Data generator will generate random values based on the data type of a specific schema field.
 For some data types, however, there are additional parameters that can be specified in `StructField`'s
 metadata property that will impact the value produced. If the field has nullable property set to
-`True` generated values will be set to `None` with `10%` probability.
+`True` generated values will be randomly set to `None`.
 
 ### BooleanType()
 * Possible values: `True` or `False`
@@ -212,6 +212,15 @@ metadata property that will impact the value produced. If the field has nullable
     StructField("some_field", StringType(), True, metadata={"content_type": "timestamp", "date_format": "MMM dd, yyyy"})
     ```
 
+###### `categorical`
+  * Random value from specified list
+  * Metadata params:
+  - `categories`: list of categorical values ["phones", "tablets", "desktops"]
+  * Example:
+  ```python
+  StructField("some_field", StringType(), True, metadata={"content_type": "categorical", "categories": ["phones", "tablets", "desktops"]})
+  ```
+
 ### ArrayType()
 * Possible values: list with arbitrary number of elements of specified type.
 * Metadata params:
@@ -308,6 +317,45 @@ DataGenerator(spark)\
     .options(num_files=2, num_records=10**6, file_format="csv")\
     .spark_option("header", True)\
     .save_to("/path/to/dir/")
+```
+
+### Nullification
+Nullable fields are set to `null` with default probability of `10%`.
+Default probability can be changed universally by passing `null_prob`
+parameter to `DataGenerator` constructor or set for each field
+individually with `null_prob` metadata parameter. `null_prob` value
+must be a float between 0.0 and 1.0.
+
+If column values should be null whenever values in another columns are
+null it is possible to set `null_prob` parameter to a string with column
+name.
+
+Examples:
+```python
+# Change null_prob globally
+DataGenerator(spark, null_prob=0.5).generate_df(schema)
+
+# Set null_prob on per-column basis
+schema = StructType([
+    StructField("name", StringType(), True, metadata={"null_prob": 0.2}),
+    StructField("title", StringType(), True, metadata={"null_prob": 0.8}),
+    StructField("rating", IntegerType(), True, metadata={"null_prob": "title"})
+])
+```
+
+### Word dictionary
+To generate phrases `DataGenerator` uses a dictionary of 5,000 most common English words. This can be overridden by passing a custom list
+to `DataGenerator`'s constructor. A list of 1,000 most common French
+is available in `datagen.dictionary` module.
+
+Examples:
+```python
+from datagen.dictionary import french_words
+
+DataGenerator(spark, dictionary=french_words)...
+# or
+my_dictionary = ["ugh", "oh", "ah", "wow"]
+DataGenerator(spark, dictionary=my_dictionary)...
 ```
 
 ### File system helper

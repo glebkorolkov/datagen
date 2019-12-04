@@ -737,5 +737,10 @@ def generate_val(data_type, dictionary, nullable=False, null_prob=0.1, metadata=
     if not func:
         return val
     val = func(**params)
+
+    # Nullify
+    user_prob = metadata.get("null_prob")
+    if user_prob and not isinstance(user_prob, str):
+        null_prob = min(max(float(user_prob), 0.0), 1.0)
     val = nullify(val, null_prob) if nullable else val
     return val
