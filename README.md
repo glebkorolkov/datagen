@@ -229,7 +229,7 @@ metadata property that will impact the value produced. If the field has nullable
   - `metadata`: metadata for array elements.
 * Example:
   ```python
-  StructField("some_field", ArrayType(StringType(), False), True, metadata={"length": 5, "metadata": "content_type": "random_ascii"})
+  StructField("some_field", ArrayType(StringType(), False), True, metadata={"length": 5, "metadata": {"content_type": "random_ascii"}})
   ```
 
 ### StructType()

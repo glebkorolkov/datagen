@@ -3,9 +3,10 @@ import json
 import string
 import re
 import datetime
+import itertools
 from decimal import Decimal
 
-from pyspark.sql.types import StringType
+from pyspark.sql.types import StringType, StructField
 
 
 def validate_length_input(length_input, min_val, max_val):
@@ -557,6 +558,17 @@ def make_json(dictionary, null_prob=0.1, schema=None):
     return json.dumps(data_dict)
 
 
+def make_mid(col):
+    """Function that creates monotonically increasing id.
+
+    Uses generator object stored in a global variable _counters.
+    TBD: refactor using a more elegant solution."""
+
+    global _counters
+    mid_generator = _counters[col]
+    return str(next(mid_generator))
+
+
 def make_array(dictionary,
                length=(0, 10),
                elem_type=StringType(),
@@ -584,7 +596,8 @@ def make_array(dictionary,
 
     start, end = validate_length_input(length, min_val=0, max_val=10)
     num_elems = random.randint(start, end)
-    return [generate_val(elem_type, dictionary, nullable, null_prob, metadata) for _ in range(num_elems)]
+    field = StructField("_", elem_type, nullable)
+    return [generate_val(field, dictionary, null_prob) for _ in range(num_elems)]
 
 
 def make_struct(struct_schema, dictionary, null_prob):
@@ -638,29 +651,23 @@ def generate_row(schema, dictionary, null_prob):
     row = {}
     for field in schema.fields:
         row[field.name] = generate_val(
-            data_type=field.dataType,
-            nullable=field.nullable,
-            metadata=field.metadata,
+            field=field,
             dictionary=dictionary,
             null_prob=null_prob)
     return row
 
 
-def generate_val(data_type, dictionary, nullable=False, null_prob=0.1, metadata={}):
+def generate_val(field, dictionary, null_prob=0.1):
     """Function that generates a value for specified data type.
 
     Parameters
     ----------
-    data_type : pyspark.sql.types.*
-        Spark data type
+    field : pyspark.sql.types.StructField
+        Spark data field
     dictionary : list or tuple
         List of words for phrase or text strings
-    nullable : boolean
-        Determines it value can occasionaly be None
     null_prob : float
         Frequency of null values for nullable fields. Default: 0.1
-    metadata : dict
-        Field metadata
 
     Returns
     -------
@@ -668,12 +675,19 @@ def generate_val(data_type, dictionary, nullable=False, null_prob=0.1, metadata=
         Generated field value
     """
 
+    global _counters
+
     def set_params(metadata, keys):
         params = {}
         for key in keys:
             if metadata.get(key) is not None:
                 params[key] = metadata.get(key)
         return params
+
+    data_type = field.dataType
+    nullable = field.nullable
+    metadata = field.metadata
+    field_name = field.name
 
     val = None
     func = None
@@ -709,7 +723,8 @@ def generate_val(data_type, dictionary, nullable=False, null_prob=0.1, metadata=
             "categorical": {"func": make_cat_string, "params": ("categories",)},
             "collector_number": {"func": make_collector_number, "params": tuple()},
             "json": {"func": make_json, "params": ("schema",)},
-            "timestamp": {"func": make_timestamp_string, "params": ("last", "date_format",)}
+            "timestamp": {"func": make_timestamp_string, "params": ("last", "date_format",)},
+            "mid": {"func": make_mid, "params": tuple()}
         }
         func = string_func_mapping[content_type]["func"]
         params = set_params(metadata, string_func_mapping[content_type]["params"])
@@ -718,6 +733,8 @@ def generate_val(data_type, dictionary, nullable=False, null_prob=0.1, metadata=
             params["dictionary"] = dictionary
         if content_type in ("json",):
             params["null_prob"] = null_prob
+        if content_type in ("mid",):
+            params["col"] = field_name
     elif data_type.typeName() == "decimal":
         if getattr(data_type, "scale", None) is not None:
             params["scale"] = getattr(data_type, "scale")
@@ -744,3 +761,23 @@ def generate_val(data_type, dictionary, nullable=False, null_prob=0.1, metadata=
         null_prob = min(max(float(user_prob), 0.0), 1.0)
     val = nullify(val, null_prob) if nullable else val
     return val
+
+
+def set_counters(schema):
+    """Function that adds integer generators to _counters global
+    variable."""
+
+    global _counters
+    reset_counters()
+    for field in schema:
+        if (field.dataType.typeName() == "string" and field.metadata.get("content_type") == "mid"):
+            start_val = field.metadata.get("start", 1)
+            _counters[field.name] = itertools.count(start_val)
+
+
+def reset_counters():
+    """Function that removes all generator objects from _counters
+    variable."""
+
+    global _counters
+    _counters = {}

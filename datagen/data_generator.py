@@ -4,8 +4,9 @@ from pyspark.sql.types import StructType, ArrayType, StructField
 from pyspark.sql import functions as f
 
 from .dictionary import english_words as DEFAULT_DICTIONARY
-from .generator_utils import generate_batch
+from .generator_utils import generate_batch, set_counters, reset_counters
 from .fs_utils import generate_file_names, get_fs_helper
+import datagen.generator_utils as gutils
 
 
 class DataGenerator:
@@ -35,8 +36,9 @@ class DataGenerator:
         self.spark = spark
         self.dictionary = dictionary or DEFAULT_DICTIONARY
         self.null_prob = null_prob
+        gutils._counters = {}
 
-    def generate_df(self, schema, num_records=10000):
+    def generate_df(self, schema, num_records=10000, ignore_counters=False):
         """Method that generates a dataframe with fake data from schema.
 
         Parameters
@@ -50,12 +52,15 @@ class DataGenerator:
         -------
         dataframe
         """
-
+        if not ignore_counters:
+            set_counters(schema)
         data = generate_batch(
             schema=schema,
             batch_size=num_records,
             dictionary=self.dictionary,
             null_prob=self.null_prob)
+        if not ignore_counters:
+            reset_counters()
         # Remove metadata from schema as params may not be json-serializable
         output_schema = clean_schema(schema)
         df = self.spark.createDataFrame(data, output_schema)
@@ -210,18 +215,20 @@ class DataWriter:
             If schema parameter not set
         """
 
-        if not self.schema:
+        if not self._schema:
             raise RuntimeError("Data schema not set. Use .schema(schema) method.")
         file_names = generate_file_names(
             name_pattern=self._options.get("file_name_pattern"),
             every=self._options.get("date_increment"),
             num_files=self._options.get("num_files")
         )
-        for file_name in file_names:
+        set_counters(self._schema)
+        for file_name in file_names[::-1]:
             # Generate batch for file
             batch_df = self.data_generator.generate_df(
                 schema=self._schema,
-                num_records=self._options.get("num_records")
+                num_records=self._options.get("num_records"),
+                ignore_counters=True
             ).coalesce(1)
             # Configure writer
             spark_writer = batch_df.write\
@@ -239,6 +246,8 @@ class DataWriter:
             from_path = os.path.join(tmp_dir, csv_file_name)
             fs_helper.mv(from_path, to_path)
             fs_helper.rmdir(os.path.join(location, "tmp"))
+
+        reset_counters()
 
 
 def clean_schema(schema):
