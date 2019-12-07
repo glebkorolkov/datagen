@@ -11,6 +11,28 @@ Produces a Spark dataframe or writes to files.
   specified pattern
 - Can be used locally or in Databricks
 
+## Installation
+
+Requires Python 3.
+
+```bash
+git clone https://github.com/glebkorolkov/datagen.git datagen
+cd datagen
+python setup.py bdist_wheel
+pip install -r requirements.txt
+pip install dist/datagen-1.0-py3-none-any.whl
+``` 
+or for development purposes / modification:
+
+```bash
+git clone https://github.com/glebkorolkov/datagen.git datagen
+cd datagen
+pip install -r requirements.txt
+pip install -e .
+```
+
+For use in Databricks build the wheel or egg and attach it to the cluster.
+
 ## Usage
 
 ```python
