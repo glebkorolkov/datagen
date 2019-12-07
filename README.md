@@ -235,13 +235,22 @@ metadata property that will impact the value produced. If the field has nullable
     ```
 
 ###### `categorical`
-  * Random value from specified list
+  * Random value from specified list.
   * Metadata params:
   - `categories`: list of categorical values ["phones", "tablets", "desktops"]
   * Example:
   ```python
   StructField("some_field", StringType(), True, metadata={"content_type": "categorical", "categories": ["phones", "tablets", "desktops"]})
   ```
+
+###### `mid`
+  * A string representing a monotonically increasing numeric value.
+  * Metadata params:
+  - `start`: start value. Default: 1
+  * Example:
+    ```python
+    StructField("mid_field", StringType(), True, metadata={"content_type": "mid", "start": 100})
+    ```
 
 ### ArrayType()
 * Possible values: list with arbitrary number of elements of specified type.
